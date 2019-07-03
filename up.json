@@ -1,0 +1,27 @@
+{
+  "name": "history",
+  "profile": "mine",
+  "stages": {
+    "staging": {
+      "domain": "h.goserverless.sg",
+      "zone": "goserverless.sg"
+    }
+  },
+  "lambda": {
+    "policy": [
+      {
+        "Effect": "Allow",
+        "Resource": "*",
+        "Action": [
+          "dynamodb:*"
+        ]
+      }
+    ]
+  },
+  "regions": [
+    "ap-southeast-1"
+  ],
+  "error_pages": {
+    "disable": true
+  }
+}
