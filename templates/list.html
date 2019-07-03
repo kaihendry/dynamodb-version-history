@@ -1,0 +1,19 @@
+{{template "header"}}
+
+{{ range .History }}
+
+ <dl>
+  <dt>Item ID</dt>
+  <dd>{{ .ItemID }}</dd>
+  <dt>Version</dt>
+  <dd>{{ .Version }}</dd>
+  <dt>Current version</dt>
+  <dd>{{ .CurVer }}</dd>
+  <dt>Who</dt>
+  <dd>{{ .Who }}</dd>
+  <dt>When</dt>
+  <dd>{{ .When }}</dd>
+</dl>
+{{ end }}
+
+{{template "footer"}}
