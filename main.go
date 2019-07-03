@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/apex/log"
 	jsonhandler "github.com/apex/log/handlers/json"
@@ -65,7 +64,8 @@ func main() {
 
 	addr := ":" + os.Getenv("PORT")
 	app := mux.NewRouter()
-	app.HandleFunc("/", h.current)
+	app.HandleFunc("/latest", h.latest)
+	app.HandleFunc("/", h.all)
 	if err := http.ListenAndServe(addr, app); err != nil {
 		log.WithError(err).Fatal("error listening")
 	}
@@ -75,23 +75,74 @@ func add(w http.ResponseWriter, r *http.Request) {
 	views.ExecuteTemplate(w, "index.html", nil)
 }
 
-func parseDate(input string, tz string) (day time.Time, err error) {
-	loc, err := time.LoadLocation(tz)
+func (h handler) latest(w http.ResponseWriter, r *http.Request) {
+	iReq := h.db.GetItemRequest(&dynamodb.GetItemInput{
+		Key: map[string]dynamodb.AttributeValue{
+			"ItemID": {
+				S: aws.String("1"),
+			},
+			"Version": {
+				S: aws.String("v0"),
+			},
+		},
+		ProjectionExpression: aws.String("CurVer"),
+		TableName:            aws.String("History"),
+	})
+	result, err := iReq.Send(context.Background())
 	if err != nil {
-		log.WithError(err).Error("bad timezone")
+		log.WithError(err).Error("failed to query table")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var first History
+	err = dynamodbattribute.UnmarshalMap(result.Item, &first)
+	if err != nil {
+		log.WithError(err).Error("unmarshal dynamodb result")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	log.Infof("Current version: %+v", first.CurVer)
+	iReq = h.db.GetItemRequest(&dynamodb.GetItemInput{
+		Key: map[string]dynamodb.AttributeValue{
+			"ItemID": {
+				S: aws.String("1"),
+			},
+			"Version": {
+				S: aws.String(first.CurVer),
+			},
+		},
+		TableName: aws.String("History"),
+	})
+	result, err = iReq.Send(context.Background())
+	if err != nil {
+		log.WithError(err).Error("failed to query table")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var current History
+	err = dynamodbattribute.UnmarshalMap(result.Item, &current)
+	if err != nil {
+		log.WithError(err).Error("unmarshal dynamodb result")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	log.Infof("Version: %s %v", first.CurVer, current)
+
+	err = views.ExecuteTemplate(w, "latest.html", struct {
+		History History
+	}{
+		current,
+	})
+
+	if err != nil {
+		log.WithError(err).Error("failed to render HTML")
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	day, err = time.ParseInLocation("2006-01-02", input, loc)
-	if err != nil {
-		log.WithError(err).Info("bad date")
-		return
-	}
-
-	return
 }
 
-func (h handler) current(w http.ResponseWriter, r *http.Request) {
+func (h handler) all(w http.ResponseWriter, r *http.Request) {
 	keyCond := expression.Key("ItemID").Equal(expression.Value("1"))
 
 	expr, err := expression.NewBuilder().
