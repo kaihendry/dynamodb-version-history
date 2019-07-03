@@ -64,8 +64,9 @@ func main() {
 
 	addr := ":" + os.Getenv("PORT")
 	app := mux.NewRouter()
-	app.HandleFunc("/latest", h.latest)
-	app.HandleFunc("/", h.all)
+	app.HandleFunc("/v/{id}", h.lookup)
+	app.HandleFunc("/", h.latest)
+	app.HandleFunc("/all", h.all)
 	if err := http.ListenAndServe(addr, app); err != nil {
 		log.WithError(err).Fatal("error listening")
 	}
@@ -102,18 +103,23 @@ func (h handler) latest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Infof("Current version: %+v", first.CurVer)
-	iReq = h.db.GetItemRequest(&dynamodb.GetItemInput{
+	http.Redirect(w, r, "/v/"+first.CurVer, http.StatusFound)
+}
+
+func (h handler) lookup(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	iReq := h.db.GetItemRequest(&dynamodb.GetItemInput{
 		Key: map[string]dynamodb.AttributeValue{
 			"ItemID": {
 				S: aws.String("1"),
 			},
 			"Version": {
-				S: aws.String(first.CurVer),
+				S: aws.String(vars["id"]),
 			},
 		},
 		TableName: aws.String("History"),
 	})
-	result, err = iReq.Send(context.Background())
+	result, err := iReq.Send(context.Background())
 	if err != nil {
 		log.WithError(err).Error("failed to query table")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -126,7 +132,7 @@ func (h handler) latest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	log.Infof("Version: %s %v", first.CurVer, current)
+	log.Infof("Version: %s %v", vars["id"], current)
 
 	err = views.ExecuteTemplate(w, "latest.html", struct {
 		History History
